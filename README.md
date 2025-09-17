@@ -3,5 +3,9 @@
 Odin language OpenGL programming using glfw
 
 Examples for OpenGL in Odin programming language
+Using :
+
+- vendor:glfw
+- vendor:stb
 
 Some parts are taken from various c examples and tutorials
