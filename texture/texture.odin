@@ -27,6 +27,8 @@ init :: proc() -> glfw.WindowHandle {
 	}
 	glfw.MakeContextCurrent(window_handle)
 	gl.load_up_to(GL_MAJOR_VERSION, GL_MINOR_VERSION, glfw.gl_set_proc_address)
+	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+	gl.Enable(gl.BLEND)
 
 	// Center the window in the primary monitor
 	primary_monitor := glfw.GetPrimaryMonitor()
