@@ -9,3 +9,6 @@ Using :
 - vendor:stb
 
 Some parts are taken from various c examples and tutorials
+reference :
+https://learnopengl.com/
+http://www.opengl-redbook.com/
