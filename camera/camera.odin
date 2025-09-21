@@ -5,6 +5,7 @@ import "core:fmt"
 import glm "core:math/linalg/glsl"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
+import "shader"
 import "vendor:stb/image"
 
 WIDTH :: 1600
@@ -149,8 +150,9 @@ main :: proc() {
         panic("Unable to init")
     }
     defer cleanup(window_handle)
-
-    shaderProgram: u32 = load_shaders()
+	vertexSource := cstring(#load("vertexshader.glsl"))
+	fragmentSource := cstring(#load("fragmentshader.glsl"))
+	shaderProgram: u32 = shader.loadShader(&vertexSource, &fragmentSource)
     vertices := make_cube(width = 1, texture_count = 2.0)
 
     vbo: u32
@@ -206,14 +208,12 @@ main :: proc() {
     image.image_free(img.data)
 
     model := glm.mat4(1) * 1
-    modelLoc := gl.GetUniformLocation(shaderProgram, "model")
-    gl.UniformMatrix4fv(modelLoc, 1, false, &model[0, 0])
+    shader.setMat4(shaderProgram, "model", &model)
 
     view := glm.mat4LookAt(camera.position, camera.position + camera.front, camera.up)
 
     projection := glm.mat4Perspective(glm.radians(f32(45.0)), f32(WIDTH) / f32(HEIGHT), 0.1, 100)
-    projectionLoc := gl.GetUniformLocation(shaderProgram, "projection")
-    gl.UniformMatrix4fv(projectionLoc, 1, false, &projection[0, 0])
+    shader.setMat4(shaderProgram, "projection", &projection)
 
     // main loop
     running := true
@@ -267,8 +267,7 @@ main :: proc() {
         gl.UseProgram(shaderProgram)
 
         view = glm.mat4LookAt(camera.position, camera.position + camera.front, camera.up)
-        viewLoc := gl.GetUniformLocation(shaderProgram, "view")
-        gl.UniformMatrix4fv(viewLoc, 1, false, &view[0, 0])
+        shader.setMat4(shaderProgram, "view", &view)
 
         gl.BindVertexArray(vao)
         gl.DrawArrays(gl.TRIANGLES, 0, 36)
