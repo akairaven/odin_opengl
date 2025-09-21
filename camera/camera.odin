@@ -5,8 +5,8 @@ import "core:fmt"
 import glm "core:math/linalg/glsl"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
-import "shader"
 import "vendor:stb/image"
+import "shader"
 
 WIDTH :: 1600
 HEIGHT :: 900
@@ -104,7 +104,7 @@ mouseInput :: proc "c" (window: glfw.WindowHandle, xpos: f64, ypos: f64) {
     mouse.Yoffset = (mouse.lastY - ypos) * mouse.sensitivity
     mouse.lastY = ypos
     mouse.lastX = xpos
-    updateCamera(mouse.Xoffset,mouse.Yoffset)
+    updateCamera(mouse.Xoffset, mouse.Yoffset)
 }
 
 init :: proc() -> glfw.WindowHandle {
@@ -139,8 +139,8 @@ init :: proc() -> glfw.WindowHandle {
 }
 
 cleanup :: proc(window_handle: glfw.WindowHandle) {
-    defer glfw.Terminate()
-    defer glfw.DestroyWindow(window_handle)
+    glfw.Terminate()
+    glfw.DestroyWindow(window_handle)
 }
 
 main :: proc() {
@@ -150,13 +150,16 @@ main :: proc() {
         panic("Unable to init")
     }
     defer cleanup(window_handle)
-	vertexSource := cstring(#load("vertexshader.glsl"))
-	fragmentSource := cstring(#load("fragmentshader.glsl"))
-	shaderProgram: u32 = shader.loadShader(&vertexSource, &fragmentSource)
+    
+    vertexSource := cstring(#load("vertexshader.glsl"))
+    fragmentSource := cstring(#load("fragmentshader.glsl"))
+    shaderProgram: u32 = shader.loadShader(&vertexSource, &fragmentSource)
+    
     vertices := make_cube(width = 1, texture_count = 2.0)
 
     vbo: u32
     vao: u32
+    uptr: uintptr
 
     gl.GenVertexArrays(1, &vao)
     gl.GenBuffers(1, &vbo)
@@ -164,14 +167,8 @@ main :: proc() {
     gl.BindVertexArray(vao)
 
     gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-    gl.BufferData(
-        gl.ARRAY_BUFFER,
-        len(vertices) * size_of(vertices[0]),
-        raw_data(vertices[:]),
-        gl.STATIC_DRAW,
-    )
+    gl.BufferData( gl.ARRAY_BUFFER, len(vertices) * size_of(vertices[0]), raw_data(vertices[:]), gl.STATIC_DRAW)
 
-    uptr: uintptr
     gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 5 * size_of(f32), uptr)
     gl.EnableVertexAttribArray(0)
 
@@ -191,7 +188,6 @@ main :: proc() {
 
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-    // set texture filtering parameters
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 
