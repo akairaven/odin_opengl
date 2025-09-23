@@ -130,14 +130,16 @@ updateScreen :: proc(screenBuffer : ScreenBuffer) {
 }
 
 drawRectagle := proc(x:i32, y:i32, width:i32, height:i32, color : Pixel, image:Image){
-    for row in 0..< height{
-        if (y + row) >= image.height {
-            break
-        }
-        for col in 0..<width{
-            if (x + col) >= image.width {
-                continue
-            }
+    maxHeight := height
+    maxWidth := width
+    if (y + height) >= image.height {
+        maxHeight = image.height - y
+    }
+    if (x + width) >= image.width {
+        maxWidth = image.width - x
+    }
+    for row in 0..< maxHeight{
+        for col in 0..<maxWidth{
            image.data[((y+row)*image.width) + col+x] = color
         }
     }
