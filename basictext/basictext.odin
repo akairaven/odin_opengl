@@ -167,6 +167,7 @@ main :: proc() {
     text := "Hello Odin..."
     bmp, width, height := makeBmp(text, {250,250,250,255})
     textTexture := loadTexture(screenBuffer.shader, bmp, i32(width), i32(height))
+    delete(bmp)
     texture := Texture{textTexture, width, height}
     textures := []Texture{texture}
     screenBuffer.textures = &textures    // loadTexture(screenBuffer.shader, bmp, i32(len(text)), 13)a
@@ -189,6 +190,7 @@ main :: proc() {
         text := fmt.aprintf("Hello Odin! We have : %.f FPS", 1/dt)
         bmp, width, height := makeBmp(text, {250,250,250,255})
         textTexture := loadTexture(screenBuffer.shader, bmp, i32(width), i32(height))
+        delete(bmp)
         texture := Texture{textTexture, width, height}
         textures[0] = texture
         textSize := 2*glm.vec2{f32(width),13}
