@@ -158,10 +158,6 @@ main :: proc() {
     shader.setMat4(ctx.shader, "projection", &projection)
     
     atlasTexture := loadAtlasTexture(ctx.shader, &atlas.bitmap[0], atlas.bitmapWidth, atlas.bitmapHeight)
-    // texture := Texture{atlasTexture}
-    // fmt.printf("%v", texture)
-    // textures := []Texture{texture}
-    // screenBuffer.textures = &textures    // loadTexture(screenBuffer.shader, bmp, i32(len(text)), 13)a
 
     dt: f32 = 0
     lastTime: f32 = 0
