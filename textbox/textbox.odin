@@ -14,7 +14,8 @@ GL_MAJOR_VERSION :: 4
 GL_MINOR_VERSION :: 5
 
 Context :: struct {
-    shaders : map[string]u32
+    shaders : map[string]u32,
+    rectBuffer : RectBuffer,
 }
 
 Image :: struct {
@@ -25,6 +26,12 @@ Image :: struct {
 }
 
 Texture :: u32
+
+RectBuffer :: struct {
+    initialized : bool,
+    vao : u32,
+    vbo : u32,
+}
 
 initWindow :: proc() -> glfw.WindowHandle {
     if !bool(glfw.Init()) {
@@ -58,6 +65,8 @@ initWindow :: proc() -> glfw.WindowHandle {
 
 initContext :: proc() -> Context {
     ctx := Context{}
+    
+    ctx.rectBuffer =  initRectBuffer()
 
     vertexSource := cstring(#load("shader_files/vertexshader.glsl"))
     fragmentSource := cstring(#load("shader_files/fragmentshader.glsl"))
@@ -166,11 +175,7 @@ loadAtlasTexture :: proc(shader : u32, bitmap : ^u8, width : i32, height : i32) 
     return texture
 }
 
-drawRect :: proc(shaderProgram: u32, rect: [4]f32, color: glm.vec4) {
-    vertices : [4]glm.vec2 = {{0,0},
-                              {0,1},
-                              {1,0},
-                              {1,1}}
+drawRect :: proc(ctx : Context, shaderProgram: u32, rect: [4]f32, color: glm.vec4) {
     gl.UseProgram(shaderProgram)
     model := glm.mat4(1)
     model *= glm.mat4Translate(glm.vec3{rect[0], rect[1], 0}) // position on screen
@@ -180,30 +185,38 @@ drawRect :: proc(shaderProgram: u32, rect: [4]f32, color: glm.vec4) {
     colorV := color
     shader.setVec4(shaderProgram, "color", &colorV)
 
-    vao, vbo : u32
-    gl.GenVertexArrays(1, &vao)
-    gl.GenBuffers(1, &vbo)
-
-    gl.BindVertexArray(vao)
-    gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-    gl.BufferData(gl.ARRAY_BUFFER, len(vertices) * size_of(vertices[0]), &vertices[0], gl.STATIC_DRAW)
-    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 2 * size_of(f32), uintptr(0))
+    gl.BindVertexArray(ctx.rectBuffer.vao)
+    gl.BindBuffer(gl.ARRAY_BUFFER, ctx.rectBuffer.vbo)
     gl.EnableVertexAttribArray(0)
 
     gl.DrawArrays(gl.TRIANGLE_STRIP, 0, 4)
 
-    // cleanup
     gl.BindBuffer(gl.ARRAY_BUFFER, 0)
-    gl.DeleteBuffers(1, &vbo)
     gl.BindVertexArray(0)
-    gl.DeleteVertexArrays(1, &vao)
 }
 
-drawRoundRect :: proc(shaderProgram: u32, rect: [4]f32, radius: f32, color: glm.vec4) {
+
+initRectBuffer :: proc() -> RectBuffer {
     vertices : [4]glm.vec2 = {{0,0},
                               {0,1},
                               {1,0},
                               {1,1}}
+    rectBuffer : RectBuffer
+    gl.GenVertexArrays(1, &rectBuffer.vao)
+    gl.GenBuffers(1, &rectBuffer.vbo)
+    gl.BindVertexArray(rectBuffer.vao)
+    gl.BindBuffer(gl.ARRAY_BUFFER, rectBuffer.vbo)
+
+    gl.BufferData(gl.ARRAY_BUFFER, len(vertices) * size_of(vertices[0]), &vertices[0], gl.STATIC_DRAW)
+    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 2 * size_of(f32), uintptr(0))
+
+    gl.BindBuffer(gl.ARRAY_BUFFER, 0)
+    gl.BindVertexArray(0)
+    rectBuffer.initialized = true
+    return rectBuffer
+}
+
+drawRoundRect :: proc(ctx : Context, shaderProgram: u32, rect: [4]f32, radius: f32, color: glm.vec4) {
     gl.UseProgram(shaderProgram)
     model := glm.mat4(1)
     model *= glm.mat4Translate(glm.vec3{rect[0], rect[1], 0}) // position on screen
@@ -218,23 +231,14 @@ drawRoundRect :: proc(shaderProgram: u32, rect: [4]f32, radius: f32, color: glm.
     center := glm.vec2{rect[0] + rect[2]/2, rect[1] + rect[3] /2}
     shader.setVec2(shaderProgram, "rectCenter", &center)
 
-    vao, vbo : u32
-    gl.GenVertexArrays(1, &vao)
-    gl.GenBuffers(1, &vbo)
-
-    gl.BindVertexArray(vao)
-    gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-    gl.BufferData(gl.ARRAY_BUFFER, len(vertices) * size_of(vertices[0]), &vertices[0], gl.STATIC_DRAW)
-    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 2 * size_of(f32), uintptr(0))
+    gl.BindVertexArray(ctx.rectBuffer.vao)
+    gl.BindBuffer(gl.ARRAY_BUFFER, ctx.rectBuffer.vbo)
     gl.EnableVertexAttribArray(0)
 
     gl.DrawArrays(gl.TRIANGLE_STRIP, 0, 4)
 
-    // cleanup
     gl.BindBuffer(gl.ARRAY_BUFFER, 0)
-    gl.DeleteBuffers(1, &vbo)
     gl.BindVertexArray(0)
-    gl.DeleteVertexArrays(1, &vao)
 }
 
 main :: proc() {
@@ -274,14 +278,14 @@ main :: proc() {
         gl.ClearColor(0.1, 0.3, 0.5, 1.0)
         gl.Clear(gl.COLOR_BUFFER_BIT)
     
-        drawRoundRect(ctx.shaders["roundShape"], {45,95,1510,710}, 20, {1,1,1,1} )      
-        drawRoundRect(ctx.shaders["roundShape"], {50,100,1500,700}, 20, {.25,.25,.25,1} )      
+        drawRoundRect(ctx, ctx.shaders["roundShape"], {45,95,1510,710}, 20, {1,1,1,1} )      
+        drawRoundRect(ctx, ctx.shaders["roundShape"], {50,100,1500,700}, 15, {.25,.25,.25,1} )      
         drawText(ctx.shaders["text"], atlasTexture, "This is a round textbox", atlas, {70, 120}, 0, glm.vec3(1))
 
         text := fmt.aprintf("%.f FPS", 1/dt)
         w, h := drawText(ctx.shaders["text"], atlasTexture, text, atlas, {1480, 860}, 0, glm.vec3(.7))
-        drawRect(ctx.shaders["shape"], {1470,855,w+20,h+10}, {.2,.2,.4,1})
-        drawRect(ctx.shaders["shape"], {1475,860,w+10,h}, {0,.2,.6,1})
+        drawRect(ctx, ctx.shaders["shape"], {1470,855,w+20,h+10}, {.2,.2,.4,1})
+        drawRect(ctx, ctx.shaders["shape"], {1475,860,w+10,h}, {0,.2,.6,1})
         w, h = drawText(ctx.shaders["text"], atlasTexture, text, atlas, {1480, 860}, 0, glm.vec3(1))
 
         glfw.SwapBuffers(window_handle)
