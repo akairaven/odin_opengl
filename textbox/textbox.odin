@@ -5,6 +5,7 @@ import glm "core:math/linalg/glsl"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
 import "shader"
+import "ttfatlas"
 
 WIDTH :: 1600
 HEIGHT :: 900
@@ -86,7 +87,7 @@ initContext :: proc() -> Context {
     return ctx
 }
 
-drawText :: proc(ctx : Context, textureID: u32, text: string, atlas : FontAtlas, 
+drawText :: proc(ctx : Context, textureID: u32, text: string, atlas : ttfatlas.FontAtlas, 
                 position : glm.vec2, rotate : f32, color : glm.vec4) -> (width, height : f32)
 {
     textShader := ctx.shaders["text"]
@@ -234,9 +235,9 @@ drawRoundRect :: proc(ctx : Context, rect: [4]f32, radius: f32, color: glm.vec4)
 
 main :: proc() {
     fontfile := #load("Cousine-Regular.ttf")
-    atlas : FontAtlas
-    makeAtlas(&fontfile, 512, 256, 32, 32, 95, &atlas, allocator=context.allocator) // load basic ascii 32~127
-    defer destroyAtlas(&atlas)
+    atlas : ttfatlas.FontAtlas
+    ttfatlas.makeAtlas(&fontfile, 512, 256, 32, 32, 95, &atlas, allocator=context.allocator) // load basic ascii 32~127
+    defer ttfatlas.destroyAtlas(&atlas)
 
     window_handle := initWindow()
     if window_handle == nil {

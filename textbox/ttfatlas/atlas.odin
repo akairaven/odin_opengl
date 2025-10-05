@@ -1,4 +1,4 @@
-package main
+package ttflas
 
 import "core:fmt"
 import "vendor:stb/truetype"
