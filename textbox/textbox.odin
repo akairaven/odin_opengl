@@ -25,8 +25,6 @@ Image :: struct {
     data:   ^u8,
 }
 
-Texture :: u32
-
 RectBuffer :: struct {
     initialized : bool,
     vao : u32,
@@ -68,22 +66,10 @@ initContext :: proc() -> Context {
     
     ctx.rectBuffer =  initRectBuffer()
 
-    vertexSource := cstring(#load("shader_files/vertexshader.glsl"))
-    fragmentSource := cstring(#load("shader_files/fragmentshader.glsl"))
-    
-    textVertexSource := cstring(#load("shader_files/text_vertex_shader.glsl"))
-    textFragmentSource := cstring(#load("shader_files/text_fragment_shader.glsl"))
-    
-    shapeVertexSource := cstring(#load("shader_files/shape_vertex_shader.glsl"))
-    shapeFragmentSource := cstring(#load("shader_files/shape_fragment_shader.glsl"))
-
-    shapeRoundVertexSource := cstring(#load("shader_files/shape_round_vertex_shader.glsl"))
-    shapeRoundFragmentSource := cstring(#load("shader_files/shape_round_fragment_shader.glsl"))
-    
-    ctx.shaders["main"] = shader.loadShader(&vertexSource, &fragmentSource)
-    ctx.shaders["text"] = shader.loadShader(&textVertexSource, &textFragmentSource)
-    ctx.shaders["shape"] = shader.loadShader(&shapeVertexSource, &shapeFragmentSource)
-    ctx.shaders["roundShape"] = shader.loadShader(&shapeRoundVertexSource, &shapeRoundFragmentSource)
+    ctx.shaders["main"] = shader.load_texture_shader()
+    ctx.shaders["text"] = shader.load_text_shader()
+    ctx.shaders["simple"] = shader.load_simple_shader()
+    ctx.shaders["roundShape"] = shader.load_simple_rounded_shader()
 
     projection := glm.mat4Ortho3d(0, WIDTH, HEIGHT, 0, -1, 1)
     gl.UseProgram(ctx.shaders["main"])
@@ -92,17 +78,19 @@ initContext :: proc() -> Context {
     gl.UseProgram(ctx.shaders["text"])
     shader.setMat4(ctx.shaders["text"], "projection", &projection)
 
-    gl.UseProgram(ctx.shaders["shape"])
-    shader.setMat4(ctx.shaders["shape"], "projection", &projection)
+    gl.UseProgram(ctx.shaders["simple"])
+    shader.setMat4(ctx.shaders["simple"], "projection", &projection)
     
     gl.UseProgram(ctx.shaders["roundShape"])
     shader.setMat4(ctx.shaders["roundShape"], "projection", &projection)
     return ctx
 }
 
-drawText :: proc(textShader : u32, textureID: Texture, text: string, atlas : FontAtlas, 
-                position : glm.vec2, rotate : f32, color : glm.vec3) -> (width, height : f32)
+drawText :: proc(ctx : Context, textureID: u32, text: string, atlas : FontAtlas, 
+                position : glm.vec2, rotate : f32, color : glm.vec4) -> (width, height : f32)
 {
+    textShader := ctx.shaders["text"]
+    assert(textShader != 0)
     width = 0
     height = atlas.fontSize
     nTri :i32= i32(len(text)) * 6 // 6 vertices per quad (2 triangles)
@@ -128,7 +116,7 @@ drawText :: proc(textShader : u32, textureID: Texture, text: string, atlas : Fon
         xPos += packedChar.xadvance
         width += xPos
     }
-    width = xPos 
+    width = xPos
     gl.UseProgram(textShader)
     model := glm.mat4(1)
     model *= glm.mat4Translate(glm.vec3{position.x, position.y, 0}) // position on screen
@@ -138,7 +126,7 @@ drawText :: proc(textShader : u32, textureID: Texture, text: string, atlas : Fon
     shader.setMat4(textShader, "model", &model)
 
     colorV := color
-    shader.setVec3(textShader, "spriteColor", &colorV)
+    shader.setVec4(textShader, "textColor", &colorV)
     textVao, textVbo : u32
     gl.GenVertexArrays(1, &textVao)
     gl.GenBuffers(1, &textVbo)
@@ -163,8 +151,7 @@ drawText :: proc(textShader : u32, textureID: Texture, text: string, atlas : Fon
     return width, height
 }
 
-loadAtlasTexture :: proc(shader : u32, bitmap : ^u8, width : i32, height : i32) -> u32 {
-    gl.UseProgram(shader)
+loadAtlasTexture :: proc(bitmap : ^u8, width : i32, height : i32) -> u32 {
     texture: u32
     gl.GenTextures(1, &texture)
     gl.BindTexture(gl.TEXTURE_2D, texture)
@@ -174,27 +161,6 @@ loadAtlasTexture :: proc(shader : u32, bitmap : ^u8, width : i32, height : i32) 
     gl.GenerateMipmap(gl.TEXTURE_2D)
     return texture
 }
-
-drawRect :: proc(ctx : Context, shaderProgram: u32, rect: [4]f32, color: glm.vec4) {
-    gl.UseProgram(shaderProgram)
-    model := glm.mat4(1)
-    model *= glm.mat4Translate(glm.vec3{rect[0], rect[1], 0}) // position on screen
-    model *= glm.mat4Scale(glm.vec3{rect[2], rect[3], 1})
-    shader.setMat4(shaderProgram, "model", &model)
-
-    colorV := color
-    shader.setVec4(shaderProgram, "color", &colorV)
-
-    gl.BindVertexArray(ctx.rectBuffer.vao)
-    gl.BindBuffer(gl.ARRAY_BUFFER, ctx.rectBuffer.vbo)
-    gl.EnableVertexAttribArray(0)
-
-    gl.DrawArrays(gl.TRIANGLE_STRIP, 0, 4)
-
-    gl.BindBuffer(gl.ARRAY_BUFFER, 0)
-    gl.BindVertexArray(0)
-}
-
 
 initRectBuffer :: proc() -> RectBuffer {
     vertices : [4]glm.vec2 = {{0,0},
@@ -216,7 +182,32 @@ initRectBuffer :: proc() -> RectBuffer {
     return rectBuffer
 }
 
-drawRoundRect :: proc(ctx : Context, shaderProgram: u32, rect: [4]f32, radius: f32, color: glm.vec4) {
+drawRect :: proc(ctx : Context, rect: [4]f32, color: glm.vec4) {
+    shaderProgram := ctx.shaders["simple"]
+    assert(shaderProgram != 0)
+    gl.UseProgram(shaderProgram)
+    model := glm.mat4(1)
+    model *= glm.mat4Translate(glm.vec3{rect[0], rect[1], 0}) // position on screen
+    model *= glm.mat4Scale(glm.vec3{rect[2], rect[3], 1})
+    shader.setMat4(shaderProgram, "model", &model)
+
+    colorV := color
+    shader.setVec4(shaderProgram, "color", &colorV)
+
+    gl.BindVertexArray(ctx.rectBuffer.vao)
+    gl.BindBuffer(gl.ARRAY_BUFFER, ctx.rectBuffer.vbo)
+    gl.EnableVertexAttribArray(0)
+
+    gl.DrawArrays(gl.TRIANGLE_STRIP, 0, 4)
+
+    gl.BindBuffer(gl.ARRAY_BUFFER, 0)
+    gl.BindVertexArray(0)
+}
+
+
+drawRoundRect :: proc(ctx : Context, rect: [4]f32, radius: f32, color: glm.vec4) {
+    shaderProgram := ctx.shaders["roundShape"]
+    assert(shaderProgram != 0)
     gl.UseProgram(shaderProgram)
     model := glm.mat4(1)
     model *= glm.mat4Translate(glm.vec3{rect[0], rect[1], 0}) // position on screen
@@ -253,14 +244,16 @@ main :: proc() {
     }
     ctx := initContext()
 
-    atlasTexture := loadAtlasTexture(ctx.shaders["text"], &atlas.bitmap[0], atlas.bitmapWidth, atlas.bitmapHeight)
+    atlasTexture := loadAtlasTexture(&atlas.bitmap[0], atlas.bitmapWidth, atlas.bitmapHeight)
     
+    currentTime := f32(glfw.GetTime())
     dt: f32 = 0
     lastTime: f32 = 0
     running := true
 
+    text := fmt.aprintf("0 FPS")
     for running {
-        currentTime := f32(glfw.GetTime())
+        currentTime = f32(glfw.GetTime())
         dt = currentTime - lastTime
         lastTime = currentTime
 
@@ -278,15 +271,15 @@ main :: proc() {
         gl.ClearColor(0.1, 0.3, 0.5, 1.0)
         gl.Clear(gl.COLOR_BUFFER_BIT)
     
-        drawRoundRect(ctx, ctx.shaders["roundShape"], {45,95,1510,710}, 20, {1,1,1,1} )      
-        drawRoundRect(ctx, ctx.shaders["roundShape"], {50,100,1500,700}, 15, {.25,.25,.25,1} )      
-        drawText(ctx.shaders["text"], atlasTexture, "This is a round textbox", atlas, {70, 120}, 0, glm.vec3(1))
+        drawRoundRect(ctx, {45,95,1510,710}, 20, {1,1,1,1} )      
+        drawRoundRect(ctx, {50,100,1500,700}, 15, {.25,.25,.25,1} )      
+        drawText(ctx, atlasTexture, "This is a round textbox", atlas, {70, 120}, 0, glm.vec4{1,1,1,1})
 
-        text := fmt.aprintf("%.f FPS", 1/dt)
-        w, h := drawText(ctx.shaders["text"], atlasTexture, text, atlas, {1480, 860}, 0, glm.vec3(.7))
-        drawRect(ctx, ctx.shaders["shape"], {1470,855,w+20,h+10}, {.2,.2,.4,1})
-        drawRect(ctx, ctx.shaders["shape"], {1475,860,w+10,h}, {0,.2,.6,1})
-        w, h = drawText(ctx.shaders["text"], atlasTexture, text, atlas, {1480, 860}, 0, glm.vec3(1))
+        text = fmt.aprintf("%.f FPS", 1/dt)
+        w, h := drawText(ctx, atlasTexture, text, atlas, {1480, 860}, 0, glm.vec4(1))
+        drawRect(ctx, {1470,855,w+20,h+10}, {.2,.2,.4,1})
+        drawRect(ctx, {1475,860,w+10,h}, {0,.2,.6,1})
+        w, h = drawText(ctx, atlasTexture, text, atlas, {1480, 860}, 0, glm.vec4{1,1,0,1})
 
         glfw.SwapBuffers(window_handle)
         
