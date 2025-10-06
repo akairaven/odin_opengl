@@ -1,20 +1,31 @@
 package main
 
+import "core:mem"
 import "core:fmt"
+import "core:strings"
+import "core:log"
 import glm "core:math/linalg/glsl"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
 import "shader"
 import "ttfatlas"
 
+Longtext :: `Lorem ipsum dolor sit amet, consectetur adipiscing elit. In ligula justo, accumsan eu risus vel, dapibus ultricies urna. Aenean suscipit ut enim et elementum.`
+
 WIDTH :: 1600
 HEIGHT :: 900
-TITLE :: "Hello Round Textbox!"
+TITLE :: "Hello Textbox!"
 
 GL_MAJOR_VERSION :: 4
 GL_MINOR_VERSION :: 5
 
-Context :: struct {
+Text_align :: enum {
+    Left,
+    Center,
+    Right,
+}
+
+AppContext :: struct {
     shaders : map[string]u32,
     rectBuffer : RectBuffer,
 }
@@ -33,15 +44,16 @@ RectBuffer :: struct {
 }
 
 initWindow :: proc() -> glfw.WindowHandle {
+
     if !bool(glfw.Init()) {
-        fmt.eprintln("GLFW has failed to load.")
+        log.errorf("GLFW has failed to load.")
         return nil
     }
     glfw.WindowHint(glfw.RESIZABLE, glfw.FALSE)
     window_handle := glfw.CreateWindow(WIDTH, HEIGHT, TITLE, nil, nil)
 
     if window_handle == nil {
-        fmt.eprintln("GLFW has failed to load the window.")
+        log.errorf("GLFW has failed to load the window.")
         return nil
     }
     glfw.MakeContextCurrent(window_handle)
@@ -62,8 +74,12 @@ initWindow :: proc() -> glfw.WindowHandle {
     return window_handle
 }
 
-initContext :: proc() -> Context {
-    ctx := Context{}
+destroyContext :: proc(ctx: AppContext) {
+    delete(ctx.shaders)
+}
+
+initContext :: proc() -> AppContext {
+    ctx := AppContext{}
     
     ctx.rectBuffer =  initRectBuffer()
 
@@ -87,7 +103,38 @@ initContext :: proc() -> Context {
     return ctx
 }
 
-drawText :: proc(ctx : Context, textureID: u32, text: string, atlas : ttfatlas.FontAtlas, 
+loadAtlasTexture :: proc(bitmap : ^u8, width : i32, height : i32) -> u32 {
+    texture: u32
+    gl.GenTextures(1, &texture)
+    gl.BindTexture(gl.TEXTURE_2D, texture)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    gl.TexImage2D( gl.TEXTURE_2D, 0, gl.RED, width, height, 0, gl.RED, gl.UNSIGNED_BYTE, bitmap)
+    gl.GenerateMipmap(gl.TEXTURE_2D)
+    return texture
+}
+
+initRectBuffer :: proc() -> RectBuffer {
+    vertices : [4]glm.vec2 = {{0,0},
+                              {0,1},
+                              {1,0},
+                              {1,1}}
+    rectBuffer : RectBuffer
+    gl.GenVertexArrays(1, &rectBuffer.vao)
+    gl.GenBuffers(1, &rectBuffer.vbo)
+    gl.BindVertexArray(rectBuffer.vao)
+    gl.BindBuffer(gl.ARRAY_BUFFER, rectBuffer.vbo)
+
+    gl.BufferData(gl.ARRAY_BUFFER, len(vertices) * size_of(vertices[0]), &vertices[0], gl.STATIC_DRAW)
+    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 2 * size_of(f32), uintptr(0))
+
+    gl.BindBuffer(gl.ARRAY_BUFFER, 0)
+    gl.BindVertexArray(0)
+    rectBuffer.initialized = true
+    return rectBuffer
+}
+
+drawText :: proc(ctx : AppContext, textureID: u32, text: string, atlas : ttfatlas.FontAtlas, 
                 position : glm.vec2, rotate : f32, color : glm.vec4) -> (width, height : f32)
 {
     textShader := ctx.shaders["text"]
@@ -98,13 +145,11 @@ drawText :: proc(ctx : Context, textureID: u32, text: string, atlas : ttfatlas.F
     vertices := make([]glm.vec4, len(text)*6)
     vPos := 0
     xPos :f32 = 0
-    for r in text { 
-        packedChar := atlas.packedChar[r-32]
-        quad := atlas.quads[r-32]
-        charWidth := quad.x1 - quad.x0
-        // charHeight := quad.y1 - quad.y0
-        x0 :f32 = xPos
-        x1 :f32 = xPos + charWidth
+    for r, idx in text { 
+        packedChar := atlas.packedChar[r]
+        quad := atlas.quads[r]
+        x0 :f32 = xPos + quad.x0
+        x1 :f32 = xPos + quad.x1 
         y0 :f32 = atlas.ascent + packedChar.yoff
         y1 :f32 = atlas.ascent + packedChar.yoff2 
         vertices[vPos]   = glm.vec4{x0, y0, quad.s0, quad.t0}
@@ -114,7 +159,7 @@ drawText :: proc(ctx : Context, textureID: u32, text: string, atlas : ttfatlas.F
         vertices[vPos+4] = glm.vec4{x1, y0, quad.s1, quad.t0}
         vertices[vPos+5] = glm.vec4{x0, y1, quad.s0, quad.t1}
         vPos += 6
-        xPos += packedChar.xadvance
+        xPos += packedChar.xadvance 
         width += xPos
     }
     width = xPos
@@ -152,88 +197,55 @@ drawText :: proc(ctx : Context, textureID: u32, text: string, atlas : ttfatlas.F
     return width, height
 }
 
-loadAtlasTexture :: proc(bitmap : ^u8, width : i32, height : i32) -> u32 {
-    texture: u32
-    gl.GenTextures(1, &texture)
-    gl.BindTexture(gl.TEXTURE_2D, texture)
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-    gl.TexImage2D( gl.TEXTURE_2D, 0, gl.RED, width, height, 0, gl.RED, gl.UNSIGNED_BYTE, bitmap)
-    gl.GenerateMipmap(gl.TEXTURE_2D)
-    return texture
+drawBoxedText :: proc(ctx: AppContext, textureID: u32, text: string, atlas: ^ttfatlas.FontAtlas,
+                      position: glm.vec2, color: glm.vec4, width: f32, align: Text_align, draw: bool) -> (resultWidth, resultHeight : f32) {
+
+    lines := ttfatlas.wordwrap_text(atlas, text, width)
+    defer delete(lines)
+
+    xPos := position.x
+    yPos := position.y
+    for line in lines {
+        xPos = position.x
+        boxW, boxH := ttfatlas.calculateBox(atlas, line)
+        #partial switch align {
+        case .Right:
+            xPos += width - boxW
+        case .Center:
+            xPos += (width - boxW)/2 
+        }
+        if draw {
+            drawText(ctx, textureID, line, atlas^, {xPos, yPos}, 0, color)
+        }
+        yPos += atlas.fontSize
+    }
+    resultWidth = width
+    resultHeight = f32(len(lines)) * atlas.fontSize
+    return resultWidth, resultHeight
 }
 
-initRectBuffer :: proc() -> RectBuffer {
-    vertices : [4]glm.vec2 = {{0,0},
-                              {0,1},
-                              {1,0},
-                              {1,1}}
-    rectBuffer : RectBuffer
-    gl.GenVertexArrays(1, &rectBuffer.vao)
-    gl.GenBuffers(1, &rectBuffer.vbo)
-    gl.BindVertexArray(rectBuffer.vao)
-    gl.BindBuffer(gl.ARRAY_BUFFER, rectBuffer.vbo)
-
-    gl.BufferData(gl.ARRAY_BUFFER, len(vertices) * size_of(vertices[0]), &vertices[0], gl.STATIC_DRAW)
-    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 2 * size_of(f32), uintptr(0))
-
-    gl.BindBuffer(gl.ARRAY_BUFFER, 0)
-    gl.BindVertexArray(0)
-    rectBuffer.initialized = true
-    return rectBuffer
-}
-
-drawRect :: proc(ctx : Context, rect: [4]f32, color: glm.vec4) {
-    shaderProgram := ctx.shaders["simple"]
-    assert(shaderProgram != 0)
-    gl.UseProgram(shaderProgram)
-    model := glm.mat4(1)
-    model *= glm.mat4Translate(glm.vec3{rect[0], rect[1], 0}) // position on screen
-    model *= glm.mat4Scale(glm.vec3{rect[2], rect[3], 1})
-    shader.setMat4(shaderProgram, "model", &model)
-
-    colorV := color
-    shader.setVec4(shaderProgram, "color", &colorV)
-
-    gl.BindVertexArray(ctx.rectBuffer.vao)
-    gl.BindBuffer(gl.ARRAY_BUFFER, ctx.rectBuffer.vbo)
-    gl.EnableVertexAttribArray(0)
-
-    gl.DrawArrays(gl.TRIANGLE_STRIP, 0, 4)
-
-    gl.BindBuffer(gl.ARRAY_BUFFER, 0)
-    gl.BindVertexArray(0)
-}
-
-
-drawRoundRect :: proc(ctx : Context, rect: [4]f32, radius: f32, color: glm.vec4) {
-    shaderProgram := ctx.shaders["roundShape"]
-    assert(shaderProgram != 0)
-    gl.UseProgram(shaderProgram)
-    model := glm.mat4(1)
-    model *= glm.mat4Translate(glm.vec3{rect[0], rect[1], 0}) // position on screen
-    model *= glm.mat4Scale(glm.vec3{rect[2], rect[3], 1})
-    shader.setMat4(shaderProgram, "model", &model)
-
-    colorV := color
-    shader.setVec4(shaderProgram, "color", &colorV)
-    shader.setFloat(shaderProgram, "cornerRadius", radius)
-    halfsize := glm.vec2{rect[2] , rect[3] } * .5 
-    shader.setVec2(shaderProgram, "halfSize", &halfsize)
-    center := glm.vec2{rect[0] + rect[2]/2, rect[1] + rect[3] /2}
-    shader.setVec2(shaderProgram, "rectCenter", &center)
-
-    gl.BindVertexArray(ctx.rectBuffer.vao)
-    gl.BindBuffer(gl.ARRAY_BUFFER, ctx.rectBuffer.vbo)
-    gl.EnableVertexAttribArray(0)
-
-    gl.DrawArrays(gl.TRIANGLE_STRIP, 0, 4)
-
-    gl.BindBuffer(gl.ARRAY_BUFFER, 0)
-    gl.BindVertexArray(0)
-}
 
 main :: proc() {
+	context.logger = log.create_console_logger()
+    defer log.destroy_console_logger(context.logger)
+    log.infof("Starting App...")
+
+    when ODIN_DEBUG {
+        track: mem.Tracking_Allocator
+        mem.tracking_allocator_init(&track, context.allocator)
+        context.allocator = mem.tracking_allocator(&track)
+
+        defer {
+            if len(track.allocation_map) > 0 {
+                fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
+                for _, entry in track.allocation_map {
+                    fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
+                }
+            }
+            mem.tracking_allocator_destroy(&track)
+        }
+    }
+
     fontfile := #load("Cousine-Regular.ttf")
     atlas : ttfatlas.FontAtlas
     ttfatlas.makeAtlas(&fontfile, 512, 256, 32, 32, 95, &atlas, allocator=context.allocator) // load basic ascii 32~127
@@ -252,8 +264,13 @@ main :: proc() {
     lastTime: f32 = 0
     running := true
 
-    text := fmt.aprintf("0 FPS")
+    text := fmt.tprintf("0 FPS")
+
+    boxsize : f32 = 400
+    boxalign : Text_align = .Left
+
     for running {
+        
         currentTime = f32(glfw.GetTime())
         dt = currentTime - lastTime
         lastTime = currentTime
@@ -268,23 +285,49 @@ main :: proc() {
             running = false
         }
 
+        if glfw.GetKey(window_handle, glfw.KEY_RIGHT) != 0 {
+            boxsize += 5
+        }
+        if glfw.GetKey(window_handle, glfw.KEY_LEFT) != 0 {
+            boxsize -= 5
+        }
+        if glfw.GetKey(window_handle, glfw.KEY_L) != 0 {
+            boxalign = .Left
+        }
+        if glfw.GetKey(window_handle, glfw.KEY_C) != 0 {
+            boxalign = .Center
+        }
+        if glfw.GetKey(window_handle, glfw.KEY_R) != 0 {
+            boxalign = .Right
+        }
+
         // render display
         gl.ClearColor(0.1, 0.3, 0.5, 1.0)
         gl.Clear(gl.COLOR_BUFFER_BIT)
-    
-        drawRoundRect(ctx, {45,95,1510,710}, 20, {1,1,1,1} )      
-        drawRoundRect(ctx, {50,100,1500,700}, 15, {.25,.25,.25,1} )      
-        drawText(ctx, atlasTexture, "This is a round textbox", atlas, {70, 120}, 0, glm.vec4{1,1,1,1})
+  
+        // box with border
+        drawRoundRect(ctx, {45,55,1510,710}, 20, {1,1,1,1} )      
+        drawRoundRect(ctx, {50,60,1500,700}, 15, {.25,.25,.25,1} )      
 
-        text = fmt.aprintf("%.f FPS", 1/dt)
-        w, h := drawText(ctx, atlasTexture, text, atlas, {1480, 860}, 0, glm.vec4(1))
-        drawRect(ctx, {1470,855,w+20,h+10}, {.2,.2,.4,1})
-        drawRect(ctx, {1475,860,w+10,h}, {0,.2,.6,1})
-        w, h = drawText(ctx, atlasTexture, text, atlas, {1480, 860}, 0, glm.vec4{1,1,0,1})
+        // FPS
+        text = fmt.tprintf("%.f FPS", 1/dt)
+
+        w, h := ttfatlas.calculateBox(&atlas, text)
+        drawRect(ctx, {1470,855,w+10,h+10}, {.2,.2,.6,1})
+        w, h = drawText(ctx, atlasTexture, text, atlas, {1475, 860}, 0, glm.vec4{1,1,0,1})
+
+        boxX :f32 = 200
+        boxY :f32 = 130
+        wi, he := drawBoxedText(ctx, atlasTexture, Longtext, &atlas, {boxX, boxY}, glm.vec4{1,1,1,1}, boxsize, boxalign, false)
+        drawRoundRect(ctx, {boxX-10, boxY-10, wi+20, he+20}, 10, {.1,.3,.9,.9}) // outline border
+        drawRoundRect(ctx, {boxX-5, boxY-5, wi+10, he+10}, 8, {.1,.7,.8,.4}) // background
+        drawBoxedText(ctx, atlasTexture, Longtext, &atlas, {boxX+2, boxY+2}, glm.vec4{.1,.1,.1,1}, boxsize, boxalign, true) // Shadow
+        drawBoxedText(ctx, atlasTexture, Longtext, &atlas, {boxX, boxY}, glm.vec4{1,1,1,1}, boxsize, boxalign, true) // Text
 
         glfw.SwapBuffers(window_handle)
-        
+        free_all(context.temp_allocator)      
     }
+    destroyContext(ctx)
     glfw.Terminate()
 }
 
