@@ -1,4 +1,4 @@
-text_ttf_atlas/text_ttf_atlas.exe 
-text_ttf_atlas/text_ttf_atlas.pdb 
-text_ttf_atlas/text_ttf_atlas.rdi 
-text_ttf_atlas/raddebug 
+*.exe 
+*.pdb 
+*.rdi 
+raddebug 
