@@ -62,7 +62,7 @@ initWindow :: proc() -> glfw.WindowHandle {
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.Viewport(0, 0, WIDTH, HEIGHT);
     
-    glfw.SetInputMode(window_handle, glfw.CURSOR, glfw.CURSOR_DISABLED)
+    // glfw.SetInputMode(window_handle, glfw.CURSOR, glfw.CURSOR_DISABLED)
 
     // Center the window in the primary monitor
     primary_monitor := glfw.GetPrimaryMonitor()
